@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+!*.pyd
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tools/
+# Node / Vite
+node_modules/
+.vite/
+*.tsbuildinfo
+
+# Build output
+dist/
+build/
+
+# Log
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Variabili d'ambiente
+.env
+.env.*
+!.env.example
+
+# Database locali (budget app)
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+# Pacchetti portabili e artefatti di build
+dist-portable/
+build-portable/
+*.spec
+
+# Dati utente locali (database e log)
+data/
+*.db-shm
+*.db-wal
+*.db-journal
+
+# Python e Node portatili scaricati dall'avvio automatico
+.runtime/

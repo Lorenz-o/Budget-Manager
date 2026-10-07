@@ -1,0 +1,5 @@
+# MyBudget - Dipendenze Python
+# Installa con: pip install -r requirements.txt
+
+flask==3.0.0
+flask-cors==4.0.0
