@@ -134,11 +134,15 @@ export async function getIncomes(): Promise<Income[]> {
   return apiFetch<Income[]>('/incomes');
 }
 
-export async function addIncome(income: Income): Promise<void> {
-  await apiFetch('/incomes', {
+export async function addIncome(
+  income: Omit<Income, 'id'>
+): Promise<number> {
+  const result = await apiFetch<{ id: number }>('/incomes', {
     method: 'POST',
     body: JSON.stringify(income),
   });
+
+  return result.id;
 }
 
 export async function updateIncome(income: Income): Promise<void> {
@@ -148,7 +152,7 @@ export async function updateIncome(income: Income): Promise<void> {
   });
 }
 
-export async function deleteIncome(id: string): Promise<void> {
+export async function deleteIncome(id: number): Promise<void> {
   await apiFetch(`/incomes/${id}`, { method: 'DELETE' });
 }
 
@@ -158,13 +162,16 @@ export async function getExpenses(): Promise<Expense[]> {
   return apiFetch<Expense[]>('/expenses');
 }
 
-export async function addExpense(expense: Expense): Promise<void> {
-  await apiFetch('/expenses', {
+export async function addExpense(
+  expense: Omit<Expense, 'id'>
+): Promise<number> {
+  const result = await apiFetch<{ id: number }>('/expenses', {
     method: 'POST',
     body: JSON.stringify(expense),
   });
-}
 
+  return result.id;
+}
 export async function updateExpense(expense: Expense): Promise<void> {
   await apiFetch(`/expenses/${expense.id}`, {
     method: 'PUT',
@@ -172,7 +179,7 @@ export async function updateExpense(expense: Expense): Promise<void> {
   });
 }
 
-export async function deleteExpense(id: string): Promise<void> {
+export async function deleteExpense(id: number): Promise<void> {
   await apiFetch(`/expenses/${id}`, { method: 'DELETE' });
 }
 
@@ -182,22 +189,30 @@ export async function getExpenseCategories(): Promise<Category[]> {
   return apiFetch<Category[]>('/categories/expenses');
 }
 
-export async function addExpenseCategory(category: Category): Promise<void> {
-  await apiFetch('/categories/expenses', {
+export async function addExpenseCategory(
+  category: Omit<Category, 'id'>
+): Promise<number> {
+  const result = await apiFetch<{ id: number }>('/categories/expenses', {
     method: 'POST',
     body: JSON.stringify(category),
   });
+
+  return result.id;
 }
 
 export async function getIncomeCategories(): Promise<Category[]> {
   return apiFetch<Category[]>('/categories/incomes');
 }
 
-export async function addIncomeCategory(category: Category): Promise<void> {
-  await apiFetch('/categories/incomes', {
+export async function addIncomeCategory(
+  category: Omit<Category, 'id'>
+): Promise<number> {
+  const result = await apiFetch<{ id: number }>('/categories/incomes', {
     method: 'POST',
     body: JSON.stringify(category),
   });
+
+  return result.id;
 }
 
 // ============ RECURRING PAYMENTS ============

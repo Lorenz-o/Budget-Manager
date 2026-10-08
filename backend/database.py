@@ -157,7 +157,7 @@ def init_db():
     # Tabella categorie spese
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS expense_categories (
-            id TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             color TEXT NOT NULL,
             icon TEXT NOT NULL
@@ -167,7 +167,7 @@ def init_db():
     # Tabella categorie entrate
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS income_categories (
-            id TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             color TEXT NOT NULL,
             icon TEXT NOT NULL
@@ -177,7 +177,7 @@ def init_db():
     # Tabella entrate
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS incomes (
-            id TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
             date TEXT NOT NULL,
@@ -192,7 +192,7 @@ def init_db():
     # Tabella spese
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS expenses (
-            id TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
             date TEXT NOT NULL,
@@ -232,7 +232,7 @@ def init_db():
     # in quella valuta, indipendente da quella principale dell'app).
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS trips (
-            id TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             name TEXT NOT NULL,
             destination TEXT,
             start_date TEXT,
@@ -247,7 +247,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS trip_costs (
-            id TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             trip_id TEXT NOT NULL,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
@@ -416,22 +416,41 @@ def _check_income_date(date_str):
 
 def add_income(data: dict):
     now = datetime.now().isoformat()
-    # Nessuna entrata può avere data futura: le entrate vanno registrate
-    # solo per il mese corrente o per quelli passati (lo stipendio base,
-    # che si ripete ogni mese, è già gestito dalla Configurazione).
+
     _check_income_date(data.get('date'))
+
     conn = get_connection()
-    conn.execute('''
-        INSERT INTO incomes (id, description, amount, date, category, recurring, recurring_day, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO incomes (
+            description,
+            amount,
+            date,
+            category,
+            recurring,
+            recurring_day,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        data['id'], data['description'], data['amount'], data['date'],
-        data['category'], data.get('recurring', False), data.get('recurring_day'),
-        now, now
+        data['description'],
+        data['amount'],
+        data['date'],
+        data['category'],
+        data.get('recurring', False),
+        data.get('recurring_day'),
+        now,
+        now
     ))
+
+    new_id = cursor.lastrowid
+
     conn.commit()
     conn.close()
-    return data['id']
+
+    return new_id
 
 
 def update_income(data: dict):
@@ -828,19 +847,45 @@ def reset_all_data():
 def add_expense(data: dict):
     data = _normalize_expense_keys(data)
     now = datetime.now().isoformat()
+
     conn = get_connection()
-    conn.execute('''
-        INSERT INTO expenses (id, description, amount, date, category, type,
-        installments, installments_paid, end_date, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT INTO expenses (
+            description,
+            amount,
+            date,
+            category,
+            type,
+            installments,
+            installments_paid,
+            end_date,
+            notes,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
-        data['id'], data['description'], data['amount'], data['date'],
-        data['category'], data['type'], data.get('installments'),
-        data.get('installments_paid'), data.get('end_date'), data.get('notes'),
-        now, now
+        data['description'],
+        data['amount'],
+        data['date'],
+        data['category'],
+        data['type'],
+        data.get('installments'),
+        data.get('installments_paid'),
+        data.get('end_date'),
+        data.get('notes'),
+        now,
+        now
     ))
+
+    new_id = cursor.lastrowid
+
     conn.commit()
     conn.close()
+
+    return new_id
 
 
 def update_expense(data: dict):
@@ -1103,13 +1148,45 @@ def get_expense_categories():
 
 def add_expense_category(data: dict):
     conn = get_connection()
-    conn.execute(
-        'INSERT INTO expense_categories (id, name, color, icon) VALUES (?, ?, ?, ?)',
-        (data['id'], data['name'], data['color'], data['icon'])
+
+    cursor = conn.execute(
+        '''
+        INSERT INTO expense_categories (name, color, icon)
+        VALUES (?, ?, ?)
+        ''',
+        (
+            data['name'],
+            data['color'],
+            data['icon'],
+        )
     )
+
     conn.commit()
+    new_id = cursor.lastrowid
     conn.close()
 
+    return new_id
+
+def add_income_category(data: dict):
+    conn = get_connection()
+
+    cursor = conn.execute(
+        '''
+        INSERT INTO income_categories (name, color, icon)
+        VALUES (?, ?, ?)
+        ''',
+        (
+            data['name'],
+            data['color'],
+            data['icon'],
+        )
+    )
+
+    conn.commit()
+    new_id = cursor.lastrowid
+    conn.close()
+
+    return new_id
 
 def get_income_categories():
     conn = get_connection()
@@ -1117,15 +1194,6 @@ def get_income_categories():
     conn.close()
     return [dict(r) for r in rows]
 
-
-def add_income_category(data: dict):
-    conn = get_connection()
-    conn.execute(
-        'INSERT INTO income_categories (id, name, color, icon) VALUES (?, ?, ?, ?)',
-        (data['id'], data['name'], data['color'], data['icon'])
-    )
-    conn.commit()
-    conn.close()
 
 
 # ============ RECURRING PAYMENTS ============

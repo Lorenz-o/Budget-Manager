@@ -351,6 +351,36 @@ export default function ConfigPanel({ onConfigChange }: { onConfigChange: (c: Co
           <strong>💡 {t('common.tip')}:</strong> {t('config.tip.salary')}
         </p>
       </div>
+
+      {/* Reset completo */}
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-200 dark:border-red-800">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h3 className="text-base font-bold text-red-700 dark:text-red-400">
+                Reset completo
+              </h3>
+
+              <p className="text-sm text-red-600 dark:text-red-300 mt-1">
+                Elimina tutti i dati e riporta MyBudget allo stato iniziale.
+              </p>
+
+              <p className="text-xs text-red-500 dark:text-red-400 mt-2">
+                Questa operazione non può essere annullata.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleResetAllData}
+              className="shrink-0 px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-xl transition shadow-md hover:shadow-lg"
+            >
+              🗑️ Reset di tutti i dati
+            </button>
+          </div>
+        </div>
+      </div>
+  
     </div>
   );
 }

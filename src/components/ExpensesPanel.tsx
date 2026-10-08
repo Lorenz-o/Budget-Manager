@@ -1,5 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { getExpenses, addExpense, updateExpense, deleteExpense, getExpenseCategories, addExpenseCategory, generateId, getRecurringFuture, FuturePayment, deleteRecurringOccurrence } from '../db';
+import {
+  getExpenses,
+  addExpense,
+  updateExpense,
+  deleteExpense,
+  getExpenseCategories,
+  addExpenseCategory,
+  getRecurringFuture,
+  FuturePayment,
+  deleteRecurringOccurrence
+} from '../db';
 import { Expense, ExpenseType, Category } from '../types';
 import { Plus, Trash2, Edit2, Receipt, X, Check, Filter, Calendar } from 'lucide-react';
 import { useLoc } from '../loc';
@@ -21,7 +31,7 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [futurePayments, setFuturePayments] = useState<FuturePayment[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<ExpenseType | 'all'>('all');
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
   const [categories, setCategories] = useState<Category[]>([]);
@@ -100,24 +110,32 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
   const handleSubmit = async () => {
     if (!validate()) return;
     
-    const expense: Expense = {
-      id: editingId || generateId(),
+    const expenseData = {
       description: form.description,
       amount: parseFloat(form.amount),
       date: form.date,
       category: form.category,
       type: form.type,
-      installments: form.installments ? parseInt(form.installments) : undefined,
-      installmentsPaid: form.installmentsPaid ? parseInt(form.installmentsPaid) : undefined,
+      installments: form.installments
+        ? parseInt(form.installments)
+        : undefined,
+      installmentsPaid: form.installmentsPaid
+        ? parseInt(form.installmentsPaid)
+        : undefined,
       endDate: form.endDate || undefined,
       notes: form.notes || undefined,
     };
 
     try {
-      if (editingId) {
-        await updateExpense(expense);
+      if (editingId !== null) {
+        await updateExpense({
+          ...expenseData,
+          id: editingId,
+        });
       } else {
-        await addExpense(expense);
+        const newId = await addExpense(expenseData);
+
+        console.log('Nuova expense creata con ID DB:', newId);
       }
     } catch (err: any) {
       setSubmitError(err?.message || t('expense.err.save'));
@@ -155,7 +173,7 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (confirm(t('expense.deleteConfirm'))) {
       await deleteExpense(id);
       const updated = await getExpenses();
@@ -167,18 +185,37 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
 
   const handleAddCategory = async () => {
     if (!newCategory.trim()) return;
-    const cat: Category = {
-      id: generateId(),
-      name: newCategory,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      icon: '📁',
+      const categoryData = {
+        name: newCategory.trim(),
+        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
+        icon: '📁',
+      };
+
+   try {
+    const newId = await addExpenseCategory(categoryData);
+
+    const createdCategory: Category = {
+      ...categoryData,
+      id: newId,
     };
-    await addExpenseCategory(cat);
-    const updated = await getExpenseCategories();
-    setCategories(updated);
+
+    setCategories(prev => [...prev, createdCategory]);
+
+    setForm(prev => ({
+      ...prev,
+      category: createdCategory.name,
+    }));
+
     setNewCategory('');
     setShowNewCat(false);
+  } catch (err: any) {
+    setSubmitError(
+      err?.message || 'Errore durante la creazione della categoria'
+    );
+  }
   };
+
+
 
   // Spese registrate del mese
   const recordedExpenses = expenses.filter(e => {
@@ -263,6 +300,7 @@ const handleDeleteFuture = async (
     );
   }
 };
+
 
   if (loading) return <div className="p-6 text-center text-gray-500">{t('common.loading')}</div>;
 

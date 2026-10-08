@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { getIncomes, addIncome, updateIncome, deleteIncome, getIncomeCategories, addIncomeCategory, generateId } from '../db';
-import { Income, Category } from '../types';
+import {
+  getIncomes,
+  addIncome,
+  updateIncome,
+  deleteIncome,
+  getIncomeCategories,
+  addIncomeCategory
+} from '../db';import { Income, Category } from '../types';
 import { Plus, Trash2, Edit2, TrendingUp, X, Check } from 'lucide-react';
 
 export default function IncomePanel({ onDataUpdate, onFormOpenChange }: { onDataUpdate: () => void; onFormOpenChange?: (open: boolean) => void }) {
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({
     description: '',
     amount: '',
@@ -68,9 +74,8 @@ export default function IncomePanel({ onDataUpdate, onFormOpenChange }: { onData
 
   const handleSubmit = async () => {
     if (!validate()) return;
-    
-    const income: Income = {
-      id: editingId || generateId(),
+
+    const incomeData = {
       description: form.description,
       amount: parseFloat(form.amount),
       date: form.date,
@@ -79,13 +84,20 @@ export default function IncomePanel({ onDataUpdate, onFormOpenChange }: { onData
     };
 
     try {
-      if (editingId) {
-        await updateIncome(income);
+      if (editingId !== null) {
+        await updateIncome({
+          ...incomeData,
+          id: editingId,
+        });
       } else {
-        await addIncome(income);
+        const newId = await addIncome(incomeData);
+
+        console.log('Nuova entrata creata con ID DB:', newId);
       }
     } catch (err: any) {
-      setSubmitError(err?.message || 'Errore durante il salvataggio dell\'entrata');
+      setSubmitError(
+        err?.message || 'Errore durante il salvataggio dell\'entrata'
+      );
       return;
     }
 
@@ -94,7 +106,6 @@ export default function IncomePanel({ onDataUpdate, onFormOpenChange }: { onData
     resetForm();
     onDataUpdate();
   };
-
   const handleEdit = (income: Income) => {
     setForm({
       description: income.description,
@@ -106,7 +117,7 @@ export default function IncomePanel({ onDataUpdate, onFormOpenChange }: { onData
     setShowForm(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (confirm('Eliminare questa entrata?')) {
       await deleteIncome(id);
       const updated = await getIncomes();
@@ -117,17 +128,35 @@ export default function IncomePanel({ onDataUpdate, onFormOpenChange }: { onData
 
   const handleAddCategory = async () => {
     if (!newCategory.trim()) return;
-    const cat: Category = {
-      id: generateId(),
-      name: newCategory,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
+
+    const categoryData = {
+      name: newCategory.trim(),
+      color: '#' + Math.floor(Math.random() * 16777215).toString(16),
       icon: '💎',
     };
-    await addIncomeCategory(cat);
-    const updated = await getIncomeCategories();
-    setCategories(updated);
-    setNewCategory('');
-    setShowNewCat(false);
+
+    try {
+      const newId = await addIncomeCategory(categoryData);
+
+      const createdCategory: Category = {
+        ...categoryData,
+        id: newId,
+      };
+
+      setCategories(prev => [...prev, createdCategory]);
+
+      setForm(prev => ({
+        ...prev,
+        category: createdCategory.name,
+      }));
+
+      setNewCategory('');
+      setShowNewCat(false);
+    } catch (err: any) {
+      setSubmitError(
+        err?.message || 'Errore durante la creazione della categoria'
+      );
+    }
   };
 
   const totalMonth = incomes.reduce((sum, i) => {

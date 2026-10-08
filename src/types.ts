@@ -10,13 +10,33 @@ export interface Config {
 }
 
 export interface Income {
-  id: string;
+  id: number;
   description: string;
   amount: number;
-  date: string; // ISO date
+  date: string;
   category: string;
   recurring: boolean;
   recurringDay?: number;
+}
+
+export interface Expense {
+  id: number;
+  description: string;
+  amount: number;
+  date: string;
+  category: string;
+  type: ExpenseType;
+  installments?: number;
+  installmentsPaid?: number;
+  endDate?: string;
+  notes?: string;
+}
+
+export interface Category {
+  id: number;
+  name: string;
+  color: string;
+  icon: string;
 }
 
 // Stipendio effettivo di un singolo mese (storico mensile)
@@ -25,31 +45,12 @@ export interface SalaryMonth {
   baseSalary: number;
   override: number | null;
   effective: number;
-  manualIncomeId: string | null;
+  manualIncomeId: number | null;
   manualAmount: number | null;
 }
 
 export type ExpenseType = 'single' | 'subscription' | 'installment' | 'savings' | 'pac';
 
-export interface Expense {
-  id: string;
-  description: string;
-  amount: number;
-  date: string; // ISO date
-  category: string;
-  type: ExpenseType;
-  installments?: number; // numero rate totali
-  installmentsPaid?: number; // rate già pagate
-  endDate?: string; // per abbonamenti
-  notes?: string;
-}
-
-export interface Category {
-  id: string;
-  name: string;
-  color: string;
-  icon: string;
-}
 
 export interface MonthlyReport {
   month: string; // YYYY-MM

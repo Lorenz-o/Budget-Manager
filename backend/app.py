@@ -319,12 +319,16 @@ def api_get_incomes():
 @app.route('/api/incomes', methods=['POST'])
 def api_add_income():
     data = request.json
+
     try:
-        db.add_income(data)
+        new_id = db.add_income(data)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    return jsonify({'success': True})
 
+    return jsonify({
+        'success': True,
+        'id': new_id
+    }), 201
 
 @app.route('/api/incomes/<income_id>', methods=['PUT'])
 def api_update_income(income_id):
@@ -385,12 +389,16 @@ def api_get_expenses():
 @app.route('/api/expenses', methods=['POST'])
 def api_add_expense():
     data = request.json
+
     try:
-        db.add_expense(data)
+        new_id = db.add_expense(data)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
-    return jsonify({'success': True})
 
+    return jsonify({
+        'success': True,
+        'id': new_id
+    }), 201
 
 @app.route('/api/expenses/<expense_id>', methods=['PUT'])
 def api_update_expense(expense_id):
@@ -419,8 +427,15 @@ def api_get_expense_categories():
 @app.route('/api/categories/expenses', methods=['POST'])
 def api_add_expense_category():
     data = request.json
-    db.add_expense_category(data)
-    return jsonify({'success': True})
+
+    try:
+        new_id = db.add_expense_category(data)
+        return jsonify({
+            'success': True,
+            'id': new_id
+        }), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/api/categories/incomes', methods=['GET'])
@@ -431,10 +446,16 @@ def api_get_income_categories():
 @app.route('/api/categories/incomes', methods=['POST'])
 def api_add_income_category():
     data = request.json
-    db.add_income_category(data)
-    return jsonify({'success': True})
 
-
+    try:
+        new_id = db.add_income_category(data)
+        return jsonify({
+            'success': True,
+            'id': new_id
+        }), 201
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    
 # ============ API: RECURRING PAYMENTS ============
 
 @app.route('/api/recurring/future', methods=['GET'])
