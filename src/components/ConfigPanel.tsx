@@ -5,6 +5,7 @@ import { Settings, Calendar, History, RotateCcw, Globe, Coins, PiggyBank } from 
 import { useLoc } from '../loc';
 import { LANGUAGES, storeLang, type Lang } from '../i18n';
 import { CURRENCIES, currencyName, normalizeCurrency } from '../currencies';
+import { deleteAllMovements, resetAllData,} from '../db';
 
 export default function ConfigPanel({ onConfigChange }: { onConfigChange: (c: Config) => void }) {
   const loc = useLoc();
@@ -92,7 +93,48 @@ export default function ConfigPanel({ onConfigChange }: { onConfigChange: (c: Co
     loadSalaryMonths();
     applyRuntimePrefs(config);
   };
+  const handleDeleteAllMovements = async () => {
+    if (
+      !confirm(
+        "ATTENZIONE: verranno eliminate tutte le entrate, "
+        + "spese e costi dei viaggi.\n\n"
+        + "Configurazione, categorie e viaggi resteranno.\n\n"
+        + "Continuare?"
+      )
+    ) {
+      return;
+    }
 
+    await deleteAllMovements();
+
+    alert(
+      "Tutti i movimenti sono stati eliminati."
+    );
+
+    window.location.reload();
+  };
+  const handleResetAllData = async () => {
+    if (
+      !confirm(
+        "⚠️ RESET COMPLETO\n\n"
+        + "Verranno eliminate entrate, spese, ricorrenze, "
+        + "viaggi, categorie e impostazioni.\n\n"
+        + "L'app tornerà allo stato iniziale.\n\n"
+        + "Questa operazione NON può essere annullata.\n\n"
+        + "Continuare?"
+      )
+    ) {
+      return;
+    }
+
+    await resetAllData();
+
+    alert(
+      "Reset completato. L'app è stata riportata allo stato iniziale."
+    );
+
+    window.location.reload();
+  };
   const validate = () => {
     const newErrors: { payday?: string; salary?: string } = {};
 

@@ -499,6 +499,55 @@ def api_health():
         db_info = {'db': 'error', 'dbPath': str(db.DB_PATH), 'detail': str(e)}
     return jsonify({'status': 'ok', 'timestamp': time.time(), **db_info})
 
+@app.route('/api/recurring/exclude-occurrence', methods=['POST'])
+def api_exclude_recurring_occurrence():
+    data = request.json or {}
+
+    expense_id = data.get("expense_id") or data.get("original_id")
+    occurrence_date = data.get("occurrence_date") or data.get("date")
+
+    if not expense_id or not occurrence_date:
+        return jsonify({
+            "error": "Occorrenza ricorrente non specificata"
+        }), 400
+
+    try:
+        db.delete_recurring_occurrence(
+            expense_id,
+            occurrence_date,
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({"success": True})
+
+@app.route('/api/recurring/exclude-month', methods=['POST'])
+def api_exclude_recurring_month():
+    data = request.json or {}
+
+    try:
+        result = db.delete_recurring_month(
+            data.get("month")
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({
+        "success": True,
+        **result,
+    })
+
+
+@app.route('/api/data/delete-all-movements', methods=['POST'])
+def api_delete_all_movements():
+    db.delete_all_movements()
+    return jsonify({"success": True})
+
+@app.route('/api/data/reset', methods=['POST'])
+def api_reset_all_data():
+    db.reset_all_data()
+    return jsonify({"success": True})
+
 
 # ============ AVVIO ============
 

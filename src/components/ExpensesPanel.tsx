@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getExpenses, addExpense, updateExpense, deleteExpense, getExpenseCategories, addExpenseCategory, generateId, getRecurringFuture, FuturePayment } from '../db';
+import { getExpenses, addExpense, updateExpense, deleteExpense, getExpenseCategories, addExpenseCategory, generateId, getRecurringFuture, FuturePayment, deleteRecurringOccurrence } from '../db';
 import { Expense, ExpenseType, Category } from '../types';
 import { Plus, Trash2, Edit2, Receipt, X, Check, Filter, Calendar } from 'lucide-react';
 import { useLoc } from '../loc';
@@ -235,6 +235,34 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
       </span>
     );
   };
+
+const handleDeleteFuture = async (
+  payment: FuturePayment
+) => {
+  if (
+    !confirm(
+      `Eliminare solo l'occorrenza del ${loc.dateLabel(payment.date)}?`
+      + `\nLa ricorrenza continuerà nei mesi successivi.`
+    )
+  ) {
+    return;
+  }
+
+  try {
+    await deleteRecurringOccurrence(
+      payment.original_id,
+      payment.date
+    );
+
+    await refreshFuture();
+    onDataUpdate();
+  } catch (error: any) {
+    setSubmitError(
+      error?.message ||
+      "Errore durante la cancellazione dell'occorrenza."
+    );
+  }
+};
 
   if (loading) return <div className="p-6 text-center text-gray-500">{t('common.loading')}</div>;
 
@@ -527,6 +555,17 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
                           </span>
                         )}
                       </span>
+                    )}
+                    {isFuturePayment && (
+                      <button
+                        onClick={() =>
+                          handleDeleteFuture(expense as FuturePayment)
+                        }
+                        className="p-2 text-red-600 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg transition"
+                        title="Elimina solo questa occorrenza"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                   {expense.notes && <p className="text-xs text-gray-400 mt-1 italic">{expense.notes}</p>}

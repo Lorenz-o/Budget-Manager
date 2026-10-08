@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { getRecurringFuture, FuturePayment } from '../db';
-import { Calendar, ChevronDown, ChevronRight } from 'lucide-react';
+import { getRecurringFuture, FuturePayment, deleteRecurringMonth } from '../db';
+import { Calendar, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useLoc } from '../loc';
 
 const TYPE_META: Record<string, { labelKey: string; cls: string }> = {
@@ -50,6 +50,24 @@ export default function RecurringPanel() {
   const totalAmount = futurePayments.reduce((sum, p) => sum + p.amount, 0);
 
   const monthLabel = (m: string) => loc.monthLabel(m);
+
+const handleDeleteMonth = async (month: string) => {
+    if (
+      !confirm(
+        `Eliminare tutte le spese previste di ${month}?`
+        + `\nLe ricorrenze originali continueranno nei mesi successivi.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await deleteRecurringMonth(month);
+      await loadPayments();
+    } catch (error) {
+      setError(String(error));
+    }
+  };
 
   if (loading) {
     return (
@@ -121,25 +139,46 @@ export default function RecurringPanel() {
         const isCollapsed = !!collapsed[month];
         return (
           <div key={month} className="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
-            {/* Header mese cliccabile */}
-            <button
-              onClick={() => setCollapsed({ ...collapsed, [month]: !isCollapsed })}
-              className="w-full flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
-            >
-              {isCollapsed
-                ? <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-              <span className="text-sm font-bold text-gray-800 dark:text-white capitalize w-28 flex-shrink-0">
-                {monthLabel(month)}
-              </span>
-              <span className="text-xs text-gray-400 flex-1">
-                {items.length === 1 ? t('recurring.countOne') : t('recurring.count', { n: items.length })}
-              </span>
-              <span className="text-sm font-bold text-red-600 dark:text-red-400">
-                -{money(monthTotal)}
-              </span>
-            </button>
+            {/* Header mese */}
+            <div className="w-full flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-700/40 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
 
+              {/* Pulsante apertura/chiusura */}
+              <button
+                onClick={() => setCollapsed({ ...collapsed, [month]: !isCollapsed })}
+                className="flex items-center gap-2 flex-1 min-w-0 text-left"
+              >
+                {isCollapsed
+                  ? <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+
+                <span className="text-sm font-bold text-gray-800 dark:text-white capitalize w-28 flex-shrink-0">
+                  {monthLabel(month)}
+                </span>
+
+                <span className="text-xs text-gray-400 flex-1">
+                  {items.length === 1
+                    ? t('recurring.countOne')
+                    : t('recurring.count', { n: items.length })}
+                </span>
+
+                <span className="text-sm font-bold text-red-600 dark:text-red-400 flex-shrink-0">
+                  -{money(monthTotal)}
+                </span>
+              </button>
+
+              {/* QUESTO è il pulsante cestino */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteMonth(month);
+                }}
+                title="Elimina tutte le spese previste di questo mese"
+                className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition flex-shrink-0"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+
+            </div>
             {/* Righe pagamenti (compatte) */}
             {!isCollapsed && (
               <div className="divide-y divide-gray-100 dark:divide-gray-700/50">

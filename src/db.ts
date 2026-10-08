@@ -341,6 +341,25 @@ export interface MonthStats {
   grade: 'excellent' | 'good' | 'fair' | 'poor' | 'critical' | 'unknown';
 }
 
+export interface FuturePayment {
+  id: string;
+  original_id: string;
+
+  description: string;
+  amount: number;
+  date: string;
+  category: string;
+  type: string;
+
+  is_future: boolean;
+  is_paid: boolean;
+
+  occurrence: number;
+  total_occurrences?: number;
+
+  notes?: string;
+}
+
 export async function getMonthStats(): Promise<MonthStats> {
   return apiFetch<MonthStats>('/month-stats');
 }
@@ -379,3 +398,37 @@ export async function initializeDB(): Promise<void> {
   // Il backend inizializza SQLite automaticamente
   console.log('🗄️ Backend SQLite pronto');
 }
+export async function deleteRecurringOccurrence(
+  originalId: string,
+  date: string
+): Promise<void> {
+  await apiFetch('/recurring/exclude-occurrence', {
+    method: 'POST',
+    body: JSON.stringify({
+      original_id: originalId,
+      occurrence_date: date,
+    }),
+  });
+}
+
+export async function deleteRecurringMonth(
+  month: string
+): Promise<void> {
+  await apiFetch('/recurring/exclude-month', {
+    method: 'POST',
+    body: JSON.stringify({ month }),
+  });
+}
+
+export async function deleteAllMovements(): Promise<void> {
+  await apiFetch('/data/delete-all-movements', {
+    method: 'POST',
+  });
+}
+
+export async function resetAllData(): Promise<void> {
+  await apiFetch('/data/reset', {
+    method: 'POST',
+  });
+}
+

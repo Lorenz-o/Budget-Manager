@@ -225,6 +225,7 @@ def init_db():
             updated_at TEXT NOT NULL
         )
     ''')
+    
 
     # ---- VIAGGI -----------------------------------------------------
     # Ogni viaggio ha una propria valuta (budget e costi sono espressi
@@ -260,6 +261,22 @@ def init_db():
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trip_costs_trip ON trip_costs(trip_id)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trip_costs_date ON trip_costs(date)')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS recurrence_exclusions (
+            expense_id TEXT NOT NULL,
+            occurrence_date TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (expense_id, occurrence_date),
+            FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute(
+        'CREATE INDEX IF NOT EXISTS idx_recurrence_exclusions_date '
+        'ON recurrence_exclusions(occurrence_date)'
+    )
+    
 
     conn.commit()
 
@@ -665,6 +682,148 @@ def get_expenses():
     conn.close()
     return expenses
 
+def delete_recurring_month(month: str, months_ahead: int = 24):
+    """
+    Esclude tutte le occorrenze ricorrenti visibili nel mese indicato.
+
+    La ricorrenza originale rimane attiva per i mesi successivi.
+    """
+
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except (TypeError, ValueError):
+        raise ValueError("Mese non valido: usare YYYY-MM")
+
+    payments = get_recurring_payments_future(max(1, int(months_ahead)))
+
+    targets = [
+        payment
+        for payment in payments
+        if str(payment.get("date", "")).startswith(month)
+    ]
+
+    if not targets:
+        return {
+            "month": month,
+            "excluded": 0,
+        }
+
+    conn = get_connection()
+    now = datetime.now().isoformat()
+
+    for payment in targets:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO recurrence_exclusions
+                (expense_id, occurrence_date, created_at)
+            VALUES (?, ?, ?)
+            """,
+            (
+                payment["original_id"],
+                payment["date"],
+                now,
+            )
+        )
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "month": month,
+        "excluded": len(targets),
+    }
+
+def delete_all_movements():
+    """
+    Elimina tutti i movimenti finanziari:
+    - entrate
+    - spese
+    - costi dei viaggi
+
+    Mantiene:
+    - configurazione
+    - categorie
+    - viaggi
+    """
+
+    conn = get_connection()
+
+    conn.execute("DELETE FROM recurrence_exclusions")
+    conn.execute("DELETE FROM trip_costs")
+    conn.execute("DELETE FROM incomes")
+    conn.execute("DELETE FROM expenses")
+
+    conn.commit()
+    conn.close()
+
+def reset_all_data():
+    """Reset completo dell'app ai valori iniziali."""
+
+    conn = get_connection()
+
+    conn.execute("DELETE FROM recurrence_exclusions")
+    conn.execute("DELETE FROM trip_costs")
+    conn.execute("DELETE FROM trips")
+    conn.execute("DELETE FROM incomes")
+    conn.execute("DELETE FROM expenses")
+    conn.execute("DELETE FROM salary_overrides")
+    conn.execute("DELETE FROM expense_categories")
+    conn.execute("DELETE FROM income_categories")
+    conn.execute("DELETE FROM config")
+
+    conn.execute(
+        """
+        INSERT INTO config
+            (id, payday, salary, currency, language, savings_base)
+        VALUES
+            (1, 27, 0, 'EUR', 'it', 0)
+        """
+    )
+
+    default_expense_categories = [
+        ("1", "Alimentari", "#22c55e", "🛒"),
+        ("2", "Trasporti", "#3b82f6", "🚗"),
+        ("3", "Casa", "#f59e0b", "🏠"),
+        ("4", "Svago", "#8b5cf6", "🎮"),
+        ("5", "Salute", "#ef4444", "💊"),
+        ("6", "Abbigliamento", "#ec4899", "👕"),
+        ("7", "Bollette", "#06b6d4", "💡"),
+        ("8", "Ristoranti", "#f97316", "🍽️"),
+        ("9", "Istruzione", "#6366f1", "📚"),
+        ("10", "Abbonamenti", "#14b8a6", "📺"),
+        ("11", "Risparmio", "#84cc16", "🏦"),
+        ("12", "Altro", "#6b7280", "📦"),
+    ]
+
+    conn.executemany(
+        """
+        INSERT INTO expense_categories
+            (id, name, color, icon)
+        VALUES (?, ?, ?, ?)
+        """,
+        default_expense_categories,
+    )
+
+    default_income_categories = [
+        ("1", "Vendita Carte", "#22c55e", "🃏"),
+        ("2", "Vendita Figure", "#3b82f6", "🎴"),
+        ("3", "Freelance", "#f59e0b", "💻"),
+        ("4", "Regali", "#ec4899", "🎁"),
+        ("5", "Rimborso", "#06b6d4", "💸"),
+        ("6", "Altro", "#6b7280", "💰"),
+    ]
+
+    conn.executemany(
+        """
+        INSERT INTO income_categories
+            (id, name, color, icon)
+        VALUES (?, ?, ?, ?)
+        """,
+        default_income_categories,
+    )
+
+    conn.commit()
+    conn.close()
 
 def add_expense(data: dict):
     data = _normalize_expense_keys(data)
@@ -707,6 +866,49 @@ def delete_expense(expense_id: str):
     conn.commit()
     conn.close()
 
+def delete_recurring_occurrence(expense_id: str, occurrence_date: str):
+    """Esclude una singola occorrenza futura senza eliminare la ricorrenza."""
+
+    try:
+        occurrence_date = (
+            datetime.fromisoformat(str(occurrence_date)[:10])
+            .date()
+            .isoformat()
+        )
+    except (ValueError, TypeError):
+        raise ValueError("Data occorrenza non valida")
+
+    conn = get_connection()
+
+    exists = conn.execute(
+        """
+        SELECT id
+        FROM expenses
+        WHERE id = ?
+          AND type IN ('subscription', 'installment', 'savings', 'pac')
+        """,
+        (expense_id,)
+    ).fetchone()
+
+    if not exists:
+        conn.close()
+        raise ValueError("Spesa ricorrente non trovata")
+
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO recurrence_exclusions
+            (expense_id, occurrence_date, created_at)
+        VALUES (?, ?, ?)
+        """,
+        (
+            expense_id,
+            occurrence_date,
+            datetime.now().isoformat(),
+        )
+    )
+
+    conn.commit()
+    conn.close()
 
 # ============ TRIPS (VIAGGI) ============
 
@@ -937,6 +1139,16 @@ def get_recurring_payments_future(months_ahead: int = 12):
     """
     conn = get_connection()
 
+    excluded = {
+        (row["expense_id"], row["occurrence_date"])
+        for row in conn.execute(
+            """
+            SELECT expense_id, occurrence_date
+            FROM recurrence_exclusions
+            """
+        ).fetchall()
+    }
+
     recurring = conn.execute("""
         SELECT * FROM expenses
         WHERE type IN ('subscription', 'installment', 'savings', 'pac')
@@ -1046,6 +1258,8 @@ def get_recurring_payments_future(months_ahead: int = 12):
                 continue  # occorrenza di un mese passato
             if d > horizon_end:
                 break  # oltre l'orizzonte richiesto (selettore mesi)
+            if (exp_dict['id'], d.isoformat()) in excluded:
+                continue
             is_paid = d <= today
             if exp_dict['type'] == 'installment':
                 if occurrence_num <= paid_so_far:
