@@ -263,12 +263,12 @@ def init_db():
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_trip_costs_date ON trip_costs(date)')
 
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS recurrence_exclusions (
-            expense_id TEXT NOT NULL,
-            occurrence_date TEXT NOT NULL,
+        CREATE TABLE IF NOT EXISTS recurrence_terminations (
+            expense_id TEXT PRIMARY KEY,
+            from_date TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            PRIMARY KEY (expense_id, occurrence_date),
-            FOREIGN KEY (expense_id) REFERENCES expenses(id) ON DELETE CASCADE
+            FOREIGN KEY (expense_id)
+            REFERENCES expenses(id) ON DELETE CASCADE
         )
     ''')
 
@@ -955,6 +955,57 @@ def delete_recurring_occurrence(expense_id: str, occurrence_date: str):
     conn.commit()
     conn.close()
 
+    
+def terminate_recurring_from(expense_id: str, from_date: str):
+    """Estingue una ricorrenza dalla data indicata in avanti."""
+
+    try:
+        from_date = (
+            datetime.fromisoformat(str(from_date)[:10])
+            .date()
+            .isoformat()
+        )
+    except (ValueError, TypeError):
+        raise ValueError("Data di estinzione non valida")
+
+    conn = get_connection()
+
+    exists = conn.execute(
+        """
+        SELECT id
+        FROM expenses
+        WHERE id = ?
+          AND type IN (
+              'subscription', 'installment', 'savings', 'pac'
+          )
+        """,
+        (expense_id,)
+    ).fetchone()
+
+    if not exists:
+        conn.close()
+        raise ValueError("Spesa ricorrente non trovata")
+
+    conn.execute(
+        """
+        INSERT INTO recurrence_terminations
+            (expense_id, from_date, created_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(expense_id) DO UPDATE SET
+            from_date = excluded.from_date,
+            created_at = excluded.created_at
+        """,
+        (
+            str(expense_id),
+            from_date,
+            datetime.now().isoformat(),
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+
 # ============ TRIPS (VIAGGI) ============
 
 def _trip_row_to_camel(row) -> dict:
@@ -1217,6 +1268,16 @@ def get_recurring_payments_future(months_ahead: int = 12):
         ).fetchall()
     }
 
+    terminated_from = {
+        str(row["expense_id"]): str(row["from_date"])[:10]
+        for row in conn.execute(
+            """
+            SELECT expense_id, from_date
+            FROM recurrence_terminations
+            """
+        ).fetchall()
+    }
+
     recurring = conn.execute("""
         SELECT * FROM expenses
         WHERE type IN ('subscription', 'installment', 'savings', 'pac')
@@ -1326,8 +1387,19 @@ def get_recurring_payments_future(months_ahead: int = 12):
                 continue  # occorrenza di un mese passato
             if d > horizon_end:
                 break  # oltre l'orizzonte richiesto (selettore mesi)
-            if (exp_dict['id'], d.isoformat()) in excluded:
-                continue
+            occurrence_date = d.isoformat()
+            occurrence_key = (str(exp_dict['id']), occurrence_date)
+
+            is_excluded = occurrence_key in excluded
+
+            termination_date = terminated_from.get(
+                str(exp_dict['id'])
+            )
+
+            is_extinguished = bool(
+                termination_date
+                and occurrence_date >= termination_date
+            )
             is_paid = d <= today
             if exp_dict['type'] == 'installment':
                 if occurrence_num <= paid_so_far:
@@ -1358,6 +1430,8 @@ def get_recurring_payments_future(months_ahead: int = 12):
                 'type': exp_dict['type'],
                 'is_future': True,
                 'is_paid': is_paid,
+                'is_excluded': is_excluded,
+                'is_extinguished': is_extinguished,
                 'occurrence': occurrence_num,
                 'total_occurrences': exp_dict.get('installments') or len(dates),
                 # Rate gia pagate/registrate della riga ricorrente: serve

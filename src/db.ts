@@ -373,6 +373,9 @@ export interface FuturePayment {
   total_occurrences?: number;
 
   notes?: string;
+
+  is_excluded?: boolean;
+  is_extinguished?: boolean;
 }
 
 export async function getMonthStats(): Promise<MonthStats> {
@@ -422,6 +425,19 @@ export async function deleteRecurringOccurrence(
     body: JSON.stringify({
       original_id: originalId,
       occurrence_date: date,
+    }),
+  });
+}
+
+export async function terminateRecurringFrom(
+  originalId: string,
+  date: string
+): Promise<void> {
+  await apiFetch('/recurring/terminate', {
+    method: 'POST',
+    body: JSON.stringify({
+      original_id: originalId,
+      from_date: date,
     }),
   });
 }

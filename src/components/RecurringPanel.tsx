@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { getRecurringFuture, FuturePayment, deleteRecurringMonth } from '../db';
-import { Calendar, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import {
+  getRecurringFuture,
+  FuturePayment,
+  deleteRecurringMonth,
+  deleteRecurringOccurrence,
+  terminateRecurringFrom,
+} from '../db';import { Calendar, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useLoc } from '../loc';
 
 const TYPE_META: Record<string, { labelKey: string; cls: string }> = {
@@ -47,11 +52,14 @@ export default function RecurringPanel() {
   }, {} as Record<string, FuturePayment[]>);
 
   const sortedMonths = Object.keys(paymentsByMonth).sort();
-  const totalAmount = futurePayments.reduce((sum, p) => sum + p.amount, 0);
-
+  const totalAmount = futurePayments.reduce(
+    (sum, p) =>
+      sum + (p.is_extinguished || p.is_excluded ? 0 : p.amount),
+    0
+  );
   const monthLabel = (m: string) => loc.monthLabel(m);
 
-const handleDeleteMonth = async (month: string) => {
+  const handleDeleteMonth = async (month: string) => {
     if (
       !confirm(
         `Eliminare tutte le spese previste di ${month}?`
@@ -68,6 +76,52 @@ const handleDeleteMonth = async (month: string) => {
       setError(String(error));
     }
   };
+
+const handleSkipOccurrence = async (payment: FuturePayment) => {
+  const date = loc.dateLabel(payment.date);
+
+  const confirmed = confirm(
+    loc.lang === 'en'
+      ? `Skip only "${payment.description}" on ${date}? Later occurrences will remain active.`
+      : `Escludere solo "${payment.description}" del ${date}? Le rate successive resteranno attive.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await deleteRecurringOccurrence(
+      payment.original_id,
+      payment.date
+    );
+
+    await loadPayments();
+  } catch (error) {
+    setError(String(error));
+  }
+};
+
+const handleTerminateFrom = async (payment: FuturePayment) => {
+  const date = loc.dateLabel(payment.date);
+
+  const confirmed = confirm(
+    loc.lang === 'en'
+      ? `Permanently close "${payment.description}" from ${date} onward? This occurrence and all later ones will be closed and excluded from totals.`
+      : `Estinguere definitivamente "${payment.description}" dal ${date} in avanti? Questa rata e tutte le successive saranno segnate come estinte e non entreranno più nei totali. Le spese storiche resteranno invariate.`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await terminateRecurringFrom(
+      payment.original_id,
+      payment.date
+    );
+
+    await loadPayments();
+  } catch (error) {
+    setError(String(error));
+  }
+};
 
   if (loading) {
     return (
@@ -135,7 +189,11 @@ const handleDeleteMonth = async (month: string) => {
       {/* Timeline mensile compatta */}
       {sortedMonths.map((month) => {
         const items = paymentsByMonth[month];
-        const monthTotal = items.reduce((sum, p) => sum + p.amount, 0);
+        const monthTotal = items.reduce(
+          (sum, p) =>
+            sum + (p.is_extinguished || p.is_excluded ? 0 : p.amount),
+          0
+        );        
         const isCollapsed = !!collapsed[month];
         return (
           <div key={month} className="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
@@ -162,7 +220,7 @@ const handleDeleteMonth = async (month: string) => {
                 </span>
 
                 <span className="text-sm font-bold text-red-600 dark:text-red-400 flex-shrink-0">
-                  -{money(monthTotal)}
+                  {monthTotal > 0 ? `-${money(monthTotal)}` : money(0)}
                 </span>
               </button>
 
@@ -205,10 +263,41 @@ const handleDeleteMonth = async (month: string) => {
                           <span className="ml-2 text-xs text-gray-400 hidden lg:inline">• {payment.category}</span>
                         )}
                       </span>
-                      {payment.is_paid ? (
+                      {payment.is_extinguished ? (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded flex-shrink-0">
+                          {loc.lang === 'en' ? 'Closed' : 'Estinta definitivamente'}
+                        </span>
+                      ) : payment.is_excluded ? (
+                        <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded flex-shrink-0">
+                          {loc.lang === 'en' ? 'Skipped this month' : 'Saltata questo mese'}
+                        </span>
+                      ) : payment.is_paid ? (
                         <span className="text-[10px] px-1.5 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded flex-shrink-0">✓</span>
                       ) : (
                         <span className="text-[10px] px-1.5 py-0.5 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 rounded flex-shrink-0">⏳</span>
+                      )}
+                      {!payment.is_extinguished && !payment.is_excluded && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleSkipOccurrence(payment)}
+                            title={loc.lang === 'en' ? 'Skip only this occurrence' : 'Salta solo questa rata'}
+                            aria-label={loc.lang === 'en' ? 'Skip only this occurrence' : 'Salta solo questa rata'}
+                            className="p-1.5 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition"
+                          >
+                            🗓️
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleTerminateFrom(payment)}
+                            title={loc.lang === 'en' ? 'Close this recurrence permanently' : 'Estingui definitivamente da questa rata'}
+                            aria-label={loc.lang === 'en' ? 'Close this recurrence permanently' : 'Estingui definitivamente da questa rata'}
+                            className="p-1.5 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition"
+                          >
+                            ⛔
+                          </button>
+                        </div>
                       )}
                       <span className="w-20 text-right font-semibold text-red-600 dark:text-red-400 tabular-nums flex-shrink-0">
                         -{money(payment.amount)}

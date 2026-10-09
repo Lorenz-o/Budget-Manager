@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+
 import {
   getExpenses,
   addExpense,
@@ -34,6 +35,35 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
   const [editingId, setEditingId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<ExpenseType | 'all'>('all');
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
+  const currentMonthRef = useRef(
+  new Date().toISOString().slice(0, 7)
+  );
+
+useEffect(() => {
+  const syncMonth = () => {
+    const actualMonth = new Date().toISOString().slice(0, 7);
+    const previousMonth = currentMonthRef.current;
+
+    if (actualMonth === previousMonth) return;
+
+    setFilterMonth(selected =>
+      selected === previousMonth ? actualMonth : selected
+    );
+
+    currentMonthRef.current = actualMonth;
+  };
+
+  window.addEventListener('focus', syncMonth);
+  document.addEventListener('visibilitychange', syncMonth);
+
+  const timer = window.setInterval(syncMonth, 60_000);
+
+  return () => {
+    window.removeEventListener('focus', syncMonth);
+    document.removeEventListener('visibilitychange', syncMonth);
+    window.clearInterval(timer);
+  };
+}, []);
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCategory, setNewCategory] = useState('');
   const [showNewCat, setShowNewCat] = useState(false);
@@ -221,7 +251,18 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
   const recordedExpenses = expenses.filter(e => {
     const matchType = filterType === 'all' || e.type === filterType;
     const matchMonth = e.date.startsWith(filterMonth);
-    return matchType && matchMonth;
+
+    const flags = e as Expense & {
+      is_excluded?: boolean;
+      is_extinguished?: boolean;
+    };
+
+    return (
+      matchType &&
+      matchMonth &&
+      !flags.is_excluded &&
+      !flags.is_extinguished
+    );
   });
 
   // Pagamenti futuri ricorrenti del mese (proiezioni).
@@ -229,6 +270,7 @@ export default function ExpensesPanel({ onDataUpdate, onFormOpenChange }: { onDa
   // manualmente (riga con stesso description/amount nello stesso mese),
   // la proiezione non viene mostrata: ogni valore conta una sola volta.
   const monthFuturePayments = futurePayments.filter(fp => {
+    if (fp.is_extinguished || fp.is_excluded) return false;
     const matchType = filterType === 'all' || fp.type === filterType;
     const matchMonth = fp.date.startsWith(filterMonth);
     if (!matchType || !matchMonth) return false;
@@ -314,7 +356,7 @@ const handleDeleteFuture = async (
           <div>
             <h2 className="text-xl font-bold text-gray-800 dark:text-white">{t('expense.title')}</h2>
             <p className="text-sm text-gray-500">
-              {loc.monthLabel(filterMonth)}: <span className="font-bold text-red-600">-{money(totalFiltered)}</span>
+              {loc.monthLabel(filterMonth)}: <span className="font-bold text-red-600">{totalFiltered > 0 ? `-${money(totalFiltered)}` : money(0)}</span>
               {' '}({t('expense.items', { count: filteredExpenses.length })})
             </p>
           </div>

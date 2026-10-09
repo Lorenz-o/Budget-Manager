@@ -558,6 +558,24 @@ def api_exclude_recurring_month():
         **result,
     })
 
+@app.route('/api/recurring/terminate', methods=['POST'])
+def api_terminate_recurring():
+    data = request.json or {}
+
+    expense_id = data.get("expense_id") or data.get("original_id")
+    from_date = data.get("from_date") or data.get("date")
+
+    if not expense_id or not from_date:
+        return jsonify({
+            "error": "Ricorrenza o data di estinzione mancante"
+        }), 400
+
+    try:
+        db.terminate_recurring_from(expense_id, from_date)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    return jsonify({"success": True})
 
 @app.route('/api/data/delete-all-movements', methods=['POST'])
 def api_delete_all_movements():
