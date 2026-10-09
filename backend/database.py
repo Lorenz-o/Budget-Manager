@@ -422,35 +422,35 @@ def add_income(data: dict):
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.execute('''
-        INSERT INTO incomes (
-            description,
-            amount,
-            date,
-            category,
-            recurring,
-            recurring_day,
-            created_at,
-            updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        data['description'],
-        data['amount'],
-        data['date'],
-        data['category'],
-        data.get('recurring', False),
-        data.get('recurring_day'),
-        now,
-        now
-    ))
+    try:
+        cursor.execute('''
+            INSERT INTO incomes (
+                description,
+                amount,
+                date,
+                category,
+                recurring,
+                recurring_day,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data['description'],
+            data['amount'],
+            data['date'],
+            data['category'],
+            data.get('recurring', False),
+            data.get('recurring_day'),
+            now,
+            now
+        ))
 
-    new_id = cursor.lastrowid
+        conn.commit()
+        return cursor.lastrowid
 
-    conn.commit()
-    conn.close()
-
-    return new_id
+    finally:
+        conn.close()
 
 
 def update_income(data: dict):
@@ -940,42 +940,41 @@ def add_expense(data: dict):
 
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        cursor.execute('''
+                INSERT INTO expenses (
+                    description,
+                    amount,
+                    date,
+                    category,
+                    type,
+                    installments,
+                    installments_paid,
+                    end_date,
+                    notes,
+                    created_at,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                data['description'],
+                data['amount'],
+                data['date'],
+                data['category'],
+                data['type'],
+                data.get('installments'),
+                data.get('installments_paid'),
+                data.get('end_date'),
+                data.get('notes'),
+                now,
+                now
+            ))
 
-    cursor.execute('''
-        INSERT INTO expenses (
-            description,
-            amount,
-            date,
-            category,
-            type,
-            installments,
-            installments_paid,
-            end_date,
-            notes,
-            created_at,
-            updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (
-        data['description'],
-        data['amount'],
-        data['date'],
-        data['category'],
-        data['type'],
-        data.get('installments'),
-        data.get('installments_paid'),
-        data.get('end_date'),
-        data.get('notes'),
-        now,
-        now
-    ))
+        conn.commit()
+        return cursor.lastrowid
 
-    new_id = cursor.lastrowid
-
-    conn.commit()
-    conn.close()
-
-    return new_id
+    finally:
+        conn.close()
 
 
 def update_expense(data: dict):
@@ -1290,44 +1289,42 @@ def get_expense_categories():
 def add_expense_category(data: dict):
     conn = get_connection()
 
-    cursor = conn.execute(
-        '''
-        INSERT INTO expense_categories (name, color, icon)
-        VALUES (?, ?, ?)
-        ''',
-        (
-            data['name'],
-            data['color'],
-            data['icon'],
+    try:
+        cursor = conn.execute(
+            '''
+            INSERT INTO expense_categories (name, color, icon)
+            VALUES (?, ?, ?)
+            ''',
+            (data['name'], data['color'], data['icon'])
         )
-    )
 
-    conn.commit()
-    new_id = cursor.lastrowid
-    conn.close()
+        conn.commit()
+        return cursor.lastrowid
 
-    return new_id
+    finally:
+        conn.close()
+
 
 def add_income_category(data: dict):
     conn = get_connection()
-
-    cursor = conn.execute(
-        '''
-        INSERT INTO income_categories (name, color, icon)
-        VALUES (?, ?, ?)
-        ''',
-        (
-            data['name'],
-            data['color'],
-            data['icon'],
+    try:
+        cursor = conn.execute(
+            '''
+            INSERT INTO income_categories (name, color, icon)
+            VALUES (?, ?, ?)
+            ''',
+            (
+                data['name'],
+                data['color'],
+                data['icon'],
+            )
         )
-    )
 
-    conn.commit()
-    new_id = cursor.lastrowid
-    conn.close()
+        conn.commit()
+        return cursor.lastrowid
 
-    return new_id
+    finally:
+        conn.close()
 
 def get_income_categories():
     conn = get_connection()
@@ -1538,81 +1535,40 @@ def get_recurring_payments_future(months_ahead: int = 12):
     return future_payments
 
 def delete_expense_category(category_name: str):
-    """Elimina una categoria e riclassifica i movimenti in Altro."""
-    category_name = (category_name or "").strip()
+    name = category_name.strip()
 
-    if not category_name:
-        raise ValueError("Nome categoria non specificato")
+    if name.casefold() == 'altro':
+        raise ValueError('La categoria Altro non può essere eliminata')
 
     conn = get_connection()
 
     try:
-        conn.execute("BEGIN")
+        conn.execute('BEGIN')
 
         category = conn.execute(
-            "SELECT name FROM expense_categories WHERE name = ?",
-            (category_name,)
+            'SELECT id FROM expense_categories WHERE name = ?',
+            (name,)
         ).fetchone()
 
         if category is None:
-            raise ValueError("Categoria spese non trovata")
-
-        if category["name"].strip().casefold() == "altro":
-            raise ValueError("La categoria Altro non può essere eliminata")
-
-        fallback = conn.execute(
-            "SELECT name FROM expense_categories WHERE name = 'Altro'"
-        ).fetchone()
-
-        if fallback is None:
-            fallback = conn.execute(
-                """
-                SELECT name
-                FROM expense_categories
-                WHERE lower(trim(name)) = 'altro'
-                LIMIT 1
-                """
-            ).fetchone()
-
-        if fallback is None:
-            raise ValueError(
-                'Impossibile eliminare la categoria: manca "Altro"'
-            )
-
-        fallback_name = fallback["name"]
-
-        moved_expenses = conn.execute(
-            "UPDATE expenses SET category = ? WHERE category = ?",
-            (fallback_name, category_name)
-        ).rowcount
-
-        # Riclassifica anche i costi dei viaggi, se la tabella esiste.
-        trip_costs_table = conn.execute(
-            """
-            SELECT name FROM sqlite_master
-            WHERE type = 'table' AND name = 'trip_costs'
-            """
-        ).fetchone()
-
-        moved_trip_costs = 0
-
-        if trip_costs_table:
-            moved_trip_costs = conn.execute(
-                "UPDATE trip_costs SET category = ? WHERE category = ?",
-                (fallback_name, category_name)
-            ).rowcount
+            raise ValueError('Categoria spese non trovata')
 
         conn.execute(
-            "DELETE FROM expense_categories WHERE name = ?",
-            (category_name,)
+            "UPDATE expenses SET category = 'Altro' WHERE category = ?",
+            (name,)
+        )
+
+        conn.execute(
+            "UPDATE trip_costs SET category = 'Altro' WHERE category = ?",
+            (name,)
+        )
+
+        conn.execute(
+            'DELETE FROM expense_categories WHERE name = ?',
+            (name,)
         )
 
         conn.commit()
-
-        return {
-            "moved_expenses": moved_expenses,
-            "moved_trip_costs": moved_trip_costs,
-        }
 
     except Exception:
         conn.rollback()
@@ -1623,62 +1579,35 @@ def delete_expense_category(category_name: str):
 
 
 def delete_income_category(category_name: str):
-    """Elimina una categoria entrate e sposta le entrate in Altro."""
-    category_name = (category_name or "").strip()
+    name = category_name.strip()
 
-    if not category_name:
-        raise ValueError("Nome categoria non specificato")
+    if name.casefold() == 'altro':
+        raise ValueError('La categoria Altro non può essere eliminata')
 
     conn = get_connection()
 
     try:
-        conn.execute("BEGIN")
+        conn.execute('BEGIN')
 
         category = conn.execute(
-            "SELECT name FROM income_categories WHERE name = ?",
-            (category_name,)
+            'SELECT id FROM income_categories WHERE name = ?',
+            (name,)
         ).fetchone()
 
         if category is None:
-            raise ValueError("Categoria entrate non trovata")
-
-        if category["name"].strip().casefold() == "altro":
-            raise ValueError("La categoria Altro non può essere eliminata")
-
-        fallback = conn.execute(
-            "SELECT name FROM income_categories WHERE name = 'Altro'"
-        ).fetchone()
-
-        if fallback is None:
-            fallback = conn.execute(
-                """
-                SELECT name
-                FROM income_categories
-                WHERE lower(trim(name)) = 'altro'
-                LIMIT 1
-                """
-            ).fetchone()
-
-        if fallback is None:
-            raise ValueError(
-                'Impossibile eliminare la categoria: manca "Altro"'
-            )
-
-        fallback_name = fallback["name"]
-
-        moved_incomes = conn.execute(
-            "UPDATE incomes SET category = ? WHERE category = ?",
-            (fallback_name, category_name)
-        ).rowcount
+            raise ValueError('Categoria entrate non trovata')
 
         conn.execute(
-            "DELETE FROM income_categories WHERE name = ?",
-            (category_name,)
+            "UPDATE incomes SET category = 'Altro' WHERE category = ?",
+            (name,)
+        )
+
+        conn.execute(
+            'DELETE FROM income_categories WHERE name = ?',
+            (name,)
         )
 
         conn.commit()
-
-        return {"moved_incomes": moved_incomes}
 
     except Exception:
         conn.rollback()
@@ -1686,7 +1615,6 @@ def delete_income_category(category_name: str):
 
     finally:
         conn.close()
-
 # ============ SALUTE FINANZIARIA (report preciso) ============
 
 def _add_months_str(month_key: str, n: int) -> str:
