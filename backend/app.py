@@ -423,20 +423,6 @@ def api_delete_expense(expense_id):
 def api_get_expense_categories():
     return jsonify(db.get_expense_categories())
 
-@app.route('/api/categories/expenses', methods=['DELETE'])
-def api_delete_expense_category():
-    category_name = request.args.get('name', '')
-
-    try:
-        result = db.delete_expense_category(category_name)
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    return jsonify({
-        'success': True,
-        **result,
-    })
-
 @app.route('/api/categories/expenses', methods=['POST'])
 def api_add_expense_category():
     data = request.json
@@ -461,23 +447,16 @@ def api_delete_expense_category():
         db.delete_expense_category(name)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        app.logger.exception(
+            'Errore durante eliminazione categoria spese'
+        )
+        return jsonify({'error': str(e)}), 500
 
     return jsonify({'success': True})
 
 
-@app.route('/api/categories/incomes', methods=['DELETE'])
-def api_delete_income_category():
-    name = request.args.get('name', '').strip()
 
-    if not name:
-        return jsonify({'error': 'Nome categoria mancante'}), 400
-
-    try:
-        db.delete_income_category(name)
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-
-    return jsonify({'success': True})
 
 @app.route('/api/categories/incomes', methods=['GET'])
 def api_get_income_categories():
@@ -499,17 +478,22 @@ def api_add_income_category():
 
 @app.route('/api/categories/incomes', methods=['DELETE'])
 def api_delete_income_category():
-    category_name = request.args.get('name', '')
+    name = request.args.get('name', '').strip()
+
+    if not name:
+        return jsonify({'error': 'Nome categoria mancante'}), 400
 
     try:
-        result = db.delete_income_category(category_name)
+        db.delete_income_category(name)
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        app.logger.exception(
+            'Errore durante eliminazione categoria entrate'
+        )
+        return jsonify({'error': str(e)}), 500
 
-    return jsonify({
-        'success': True,
-        **result,
-    })
+    return jsonify({'success': True})
     
 # ============ API: RECURRING PAYMENTS ============
 
