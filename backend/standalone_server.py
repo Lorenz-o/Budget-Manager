@@ -333,7 +333,40 @@ def add_income_category():
     data = request.json
     db.add_income_category(data)
     return jsonify({'success': True})
+@app.route('/api/categories/expenses', methods=['DELETE'])
+def delete_expense_category():
+    name = request.args.get('name', '').strip()
 
+    if not name:
+        return jsonify({'error': 'Nome categoria mancante'}), 400
+
+    try:
+        db.delete_expense_category(name)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        app.logger.exception('Errore durante eliminazione categoria spese')
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/categories/incomes', methods=['DELETE'])
+def delete_income_category():
+    name = request.args.get('name', '').strip()
+
+    if not name:
+        return jsonify({'error': 'Nome categoria mancante'}), 400
+
+    try:
+        db.delete_income_category(name)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        app.logger.exception('Errore durante eliminazione categoria entrate')
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({'success': True})
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     return jsonify(db.get_db_stats())
