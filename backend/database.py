@@ -843,6 +843,96 @@ def reset_all_data():
 
     conn.commit()
     conn.close()
+def reset_all_data():
+    """Cancella i dati personali e ripristina MyBudget allo stato iniziale."""
+
+    conn = get_connection()
+
+    try:
+        conn.execute("BEGIN")
+
+        # Rileva le tabelle presenti nel database.
+        # Questo evita errori se recurrence_terminations
+        # non è ancora stata creata in questa installazione.
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+
+        # Cancella prima i dati collegati e poi quelli principali.
+        tables_to_clear = [
+            "recurrence_exclusions",
+            "recurrence_terminations",
+            "trip_costs",
+            "trips",
+            "incomes",
+            "expenses",
+            "salary_overrides",
+            "expense_categories",
+            "income_categories",
+            "config",
+        ]
+
+        for table in tables_to_clear:
+            if table in tables:
+                conn.execute(f'DELETE FROM "{table}"')
+
+        # Configurazione iniziale: nessuno stipendio impostato.
+        conn.execute("""
+            INSERT INTO config
+                (id, payday, salary, currency, language, savings_base)
+            VALUES
+                (1, 27, 0, 'EUR', 'it', 0)
+        """)
+
+        # Categorie predefinite delle spese.
+        default_expense_categories = [
+            ("1", "Alimentari", "#22c55e", "🛒"),
+            ("2", "Trasporti", "#3b82f6", "🚗"),
+            ("3", "Casa", "#f59e0b", "🏠"),
+            ("4", "Svago", "#8b5cf6", "🎮"),
+            ("5", "Salute", "#ef4444", "💊"),
+            ("6", "Abbigliamento", "#ec4899", "👕"),
+            ("7", "Bollette", "#06b6d4", "💡"),
+            ("8", "Ristoranti", "#f97316", "🍽️"),
+            ("9", "Istruzione", "#6366f1", "📚"),
+            ("10", "Abbonamenti", "#14b8a6", "📺"),
+            ("11", "Risparmio", "#84cc16", "🏦"),
+            ("12", "Altro", "#6b7280", "📦"),
+        ]
+
+        conn.executemany("""
+            INSERT INTO expense_categories
+                (id, name, color, icon)
+            VALUES (?, ?, ?, ?)
+        """, default_expense_categories)
+
+        # Categorie predefinite delle entrate.
+        default_income_categories = [
+            ("1", "Vendita Carte", "#22c55e", "🃏"),
+            ("2", "Vendita Figure", "#3b82f6", "🎴"),
+            ("3", "Freelance", "#f59e0b", "💻"),
+            ("4", "Regali", "#ec4899", "🎁"),
+            ("5", "Rimborso", "#06b6d4", "💸"),
+            ("6", "Altro", "#6b7280", "💰"),
+        ]
+
+        conn.executemany("""
+            INSERT INTO income_categories
+                (id, name, color, icon)
+            VALUES (?, ?, ?, ?)
+        """, default_income_categories)
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 def add_expense(data: dict):
     data = _normalize_expense_keys(data)
@@ -1447,6 +1537,155 @@ def get_recurring_payments_future(months_ahead: int = 12):
     future_payments.sort(key=lambda x: x['date'])
     return future_payments
 
+def delete_expense_category(category_name: str):
+    """Elimina una categoria e riclassifica i movimenti in Altro."""
+    category_name = (category_name or "").strip()
+
+    if not category_name:
+        raise ValueError("Nome categoria non specificato")
+
+    conn = get_connection()
+
+    try:
+        conn.execute("BEGIN")
+
+        category = conn.execute(
+            "SELECT name FROM expense_categories WHERE name = ?",
+            (category_name,)
+        ).fetchone()
+
+        if category is None:
+            raise ValueError("Categoria spese non trovata")
+
+        if category["name"].strip().casefold() == "altro":
+            raise ValueError("La categoria Altro non può essere eliminata")
+
+        fallback = conn.execute(
+            "SELECT name FROM expense_categories WHERE name = 'Altro'"
+        ).fetchone()
+
+        if fallback is None:
+            fallback = conn.execute(
+                """
+                SELECT name
+                FROM expense_categories
+                WHERE lower(trim(name)) = 'altro'
+                LIMIT 1
+                """
+            ).fetchone()
+
+        if fallback is None:
+            raise ValueError(
+                'Impossibile eliminare la categoria: manca "Altro"'
+            )
+
+        fallback_name = fallback["name"]
+
+        moved_expenses = conn.execute(
+            "UPDATE expenses SET category = ? WHERE category = ?",
+            (fallback_name, category_name)
+        ).rowcount
+
+        # Riclassifica anche i costi dei viaggi, se la tabella esiste.
+        trip_costs_table = conn.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name = 'trip_costs'
+            """
+        ).fetchone()
+
+        moved_trip_costs = 0
+
+        if trip_costs_table:
+            moved_trip_costs = conn.execute(
+                "UPDATE trip_costs SET category = ? WHERE category = ?",
+                (fallback_name, category_name)
+            ).rowcount
+
+        conn.execute(
+            "DELETE FROM expense_categories WHERE name = ?",
+            (category_name,)
+        )
+
+        conn.commit()
+
+        return {
+            "moved_expenses": moved_expenses,
+            "moved_trip_costs": moved_trip_costs,
+        }
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def delete_income_category(category_name: str):
+    """Elimina una categoria entrate e sposta le entrate in Altro."""
+    category_name = (category_name or "").strip()
+
+    if not category_name:
+        raise ValueError("Nome categoria non specificato")
+
+    conn = get_connection()
+
+    try:
+        conn.execute("BEGIN")
+
+        category = conn.execute(
+            "SELECT name FROM income_categories WHERE name = ?",
+            (category_name,)
+        ).fetchone()
+
+        if category is None:
+            raise ValueError("Categoria entrate non trovata")
+
+        if category["name"].strip().casefold() == "altro":
+            raise ValueError("La categoria Altro non può essere eliminata")
+
+        fallback = conn.execute(
+            "SELECT name FROM income_categories WHERE name = 'Altro'"
+        ).fetchone()
+
+        if fallback is None:
+            fallback = conn.execute(
+                """
+                SELECT name
+                FROM income_categories
+                WHERE lower(trim(name)) = 'altro'
+                LIMIT 1
+                """
+            ).fetchone()
+
+        if fallback is None:
+            raise ValueError(
+                'Impossibile eliminare la categoria: manca "Altro"'
+            )
+
+        fallback_name = fallback["name"]
+
+        moved_incomes = conn.execute(
+            "UPDATE incomes SET category = ? WHERE category = ?",
+            (fallback_name, category_name)
+        ).rowcount
+
+        conn.execute(
+            "DELETE FROM income_categories WHERE name = ?",
+            (category_name,)
+        )
+
+        conn.commit()
+
+        return {"moved_incomes": moved_incomes}
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
 
 # ============ SALUTE FINANZIARIA (report preciso) ============
 

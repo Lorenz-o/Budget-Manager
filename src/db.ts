@@ -215,6 +215,24 @@ export async function addIncomeCategory(
   return result.id;
 }
 
+export async function deleteExpenseCategory(
+  categoryName: string
+): Promise<void> {
+  await apiFetch(
+    `/categories/expenses?name=${encodeURIComponent(categoryName)}`,
+    { method: 'DELETE' }
+  );
+}
+
+export async function deleteIncomeCategory(
+  categoryName: string
+): Promise<void> {
+  await apiFetch(
+    `/categories/incomes?name=${encodeURIComponent(categoryName)}`,
+    { method: 'DELETE' }
+  );
+}
+
 // ============ RECURRING PAYMENTS ============
 
 export interface FuturePayment {
